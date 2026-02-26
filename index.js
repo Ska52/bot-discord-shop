@@ -11,189 +11,128 @@ const {
 } = require("discord.js");
 
 const express = require("express");
-const cors = require("cors");
 
-const TOKEN = process.env.TOKEN;
+// --- CONFIGURATION SERVEUR WEB (Indispensable pour Railway) ---
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => res.send("Bot is running! 🚀"));
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[SERVER] Ready on port ${PORT}`);
+});
+
+// --- NETTOYAGE DU TOKEN ---
+// On retire les espaces ou guillemets accidentels qui causent l'erreur "Invalid Authorization header"
+const TOKEN = process.env.TOKEN ? process.env.TOKEN.trim().replace(/['"]+/g, '') : null;
 
 if (!TOKEN) {
-  console.log("❌ TOKEN manquant !");
+  console.error("❌ ERREUR: Le TOKEN est manquant dans les variables Railway !");
   process.exit(1);
 }
 
-/* =========================
-   EXPRESS (OBLIGATOIRE RAILWAY)
-========================= */
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Bot Discord Shop Online 🚀");
-});
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log("🌍 API en ligne sur le port " + PORT);
-});
-
-/* =========================
-   DISCORD CLIENT
-========================= */
-
+// --- INITIALISATION DU BOT ---
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-/* =========================
-   BOUTIQUE (MEMOIRE)
-========================= */
+let shop = []; // Stockage temporaire (effacé au redémarrage)
 
-let shop = [];
-
-/* =========================
-   COMMANDES SLASH
-========================= */
-
+// --- COMMANDES ---
 const commands = [
   new SlashCommandBuilder()
     .setName("add")
-    .setDescription("Ajouter un article (Admin seulement)")
-    .addStringOption(option =>
-      option.setName("nom")
-        .setDescription("Nom de l'article")
-        .setRequired(true))
-    .addIntegerOption(option =>
-      option.setName("prix")
-        .setDescription("Prix")
-        .setRequired(true))
-    .addStringOption(option =>
-      option.setName("image")
-        .setDescription("URL de l'image")
-        .setRequired(false)),
-
+    .setDescription("Ajouter un article")
+    .addStringOption(o => o.setName("nom").setDescription("Nom").setRequired(true))
+    .addIntegerOption(o => o.setName("prix").setDescription("Prix").setRequired(true))
+    .addStringOption(o => o.setName("image").setDescription("URL Image")),
   new SlashCommandBuilder()
     .setName("shop")
-    .setDescription("Afficher la boutique")
-].map(command => command.toJSON());
+    .setDescription("Voir la boutique")
+].map(c => c.toJSON());
 
+// --- ENREGISTREMENT DES COMMANDES ---
 client.once("ready", async () => {
-  console.log(`🤖 Connecté en tant que ${client.user.tag}`);
-
+  console.log(`✅ Connecté : ${client.user.tag}`);
+  
   const rest = new REST({ version: "10" }).setToken(TOKEN);
-
   try {
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      { body: commands }
-    );
-    console.log("✅ Commandes enregistrées !");
-  } catch (error) {
-    console.error(error);
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log("✅ Commandes Slash déployées !");
+  } catch (err) {
+    console.error("❌ Erreur de déploiement des commandes (Vérifiez votre Token) :", err.message);
   }
 });
 
-/* =========================
-   INTERACTIONS
-========================= */
-
-client.on("interactionCreate", async interaction => {
-
+// --- GESTION DES INTERACTIONS ---
+client.on("interactionCreate", async (interaction) => {
   if (interaction.isChatInputCommand()) {
-
     if (interaction.commandName === "add") {
-
       if (!interaction.member.permissions.has("Administrator")) {
-        return interaction.reply({ content: "❌ Admin seulement.", ephemeral: true });
+        return interaction.reply({ content: "Admin uniquement.", ephemeral: true });
       }
 
-      const nom = interaction.options.getString("nom");
-      const prix = interaction.options.getInteger("prix");
-      const image = interaction.options.getString("image");
-
-      const article = {
+      const item = {
         id: Date.now().toString(),
-        nom,
-        prix,
-        image,
+        nom: interaction.options.getString("nom"),
+        prix: interaction.options.getInteger("prix"),
+        image: interaction.options.getString("image"),
         stock: true
       };
-
-      shop.push(article);
-
-      return interaction.reply(`✅ Article **${nom}** ajouté !`);
+      shop.push(item);
+      return interaction.reply(`✅ **${item.nom}** ajouté !`);
     }
 
     if (interaction.commandName === "shop") {
-
-      if (shop.length === 0) {
-        return interaction.reply("🛒 Boutique vide.");
-      }
+      if (shop.length === 0) return interaction.reply("La boutique est vide.");
+      
+      await interaction.reply({ content: "Chargement de la boutique...", ephemeral: true });
 
       for (const item of shop) {
-
         const embed = new EmbedBuilder()
           .setTitle(item.nom)
-          .setDescription(`💰 Prix: ${item.prix}€`)
-          .setColor(item.stock ? "Green" : "Red");
-
+          .setDescription(`Prix : ${item.prix}€\nStatut : ${item.stock ? "En stock" : "Rupture"}`)
+          .setColor(item.stock ? 0x00FF00 : 0xFF0000);
+        
         if (item.image) embed.setImage(item.image);
 
-        const stockButton = new ButtonBuilder()
-          .setCustomId("stock_" + item.id)
-          .setLabel(item.stock ? "En Stock" : "Rupture")
-          .setStyle(item.stock ? ButtonStyle.Success : ButtonStyle.Danger);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`buy_${item.id}`)
+            .setLabel("Acheter")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(!item.stock),
+          new ButtonBuilder()
+            .setCustomId(`stock_${item.id}`)
+            .setLabel("Toggle Stock (Admin)")
+            .setStyle(ButtonStyle.Secondary)
+        );
 
-        const buyButton = new ButtonBuilder()
-          .setCustomId("buy_" + item.id)
-          .setLabel("Acheter")
-          .setStyle(ButtonStyle.Primary);
-
-        const row = new ActionRowBuilder().addComponents(stockButton, buyButton);
-
-        await interaction.channel.send({
-          embeds: [embed],
-          components: [row]
-        });
+        await interaction.channel.send({ embeds: [embed], components: [row] });
       }
-
-      return interaction.reply({ content: "🛍️ Boutique affichée !", ephemeral: true });
     }
   }
 
   if (interaction.isButton()) {
-
     const [action, id] = interaction.customId.split("_");
     const item = shop.find(i => i.id === id);
 
-    if (!item) return;
+    if (!item) return interaction.reply({ content: "Article non trouvé.", ephemeral: true });
 
     if (action === "stock") {
-
-      if (!interaction.member.permissions.has("Administrator")) {
-        return interaction.reply({ content: "❌ Admin seulement.", ephemeral: true });
-      }
-
+      if (!interaction.member.permissions.has("Administrator")) return;
       item.stock = !item.stock;
-
-      return interaction.reply({
-        content: `🔄 Stock mis à jour pour ${item.nom}`,
-        ephemeral: true
-      });
+      return interaction.reply({ content: `Stock mis à jour pour ${item.nom}`, ephemeral: true });
     }
 
     if (action === "buy") {
-
-      if (!item.stock) {
-        return interaction.reply({ content: "❌ Article en rupture.", ephemeral: true });
-      }
-
-      return interaction.reply({
-        content: `🛒 ${interaction.user.username} a acheté ${item.nom} !`,
-        ephemeral: false
-      });
+      return interaction.reply(`🛒 ${interaction.user.username} a commandé **${item.nom}** !`);
     }
   }
 });
 
-client.login(TOKEN);
+// --- CONNEXION ---
+client.login(TOKEN).catch(err => {
+  console.error("❌ LOGIN FAILED : L'erreur vient sûrement de votre variable TOKEN sur Railway.");
+  console.error("Message d'erreur :", err.message);
+});
