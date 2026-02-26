@@ -4,7 +4,7 @@ const cors = require("cors");
 
 // ================= CONFIG =================
 
-const TOKEN = process.env.TOKEN;
+const TOKEN = process.env.TOKEN?.trim();
 
 if (!TOKEN) {
   console.error("❌ TOKEN manquant dans les variables Railway !");
@@ -84,3 +84,4 @@ if (!TOKEN) {
   console.error("❌ TOKEN manquant !");
   process.exit(1);
 }
+
