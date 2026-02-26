@@ -16,7 +16,7 @@ const cors = require("cors");
 const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
-  console.error("❌ TOKEN manquant !");
+  console.log("❌ TOKEN manquant !");
   process.exit(1);
 }
 
@@ -197,3 +197,4 @@ client.on("interactionCreate", async interaction => {
 });
 
 client.login(TOKEN);
+
