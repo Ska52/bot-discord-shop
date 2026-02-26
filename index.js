@@ -132,7 +132,8 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 // --- CONNEXION ---
-client.login(TOKEN).catch(err => {
+client.login(process.env.DISCORD_TOKEN); // Change TOKEN par DISCORD_TOKEN {
   console.error("❌ LOGIN FAILED : L'erreur vient sûrement de votre variable TOKEN sur Railway.");
   console.error("Message d'erreur :", err.message);
 });
+
