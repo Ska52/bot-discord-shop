@@ -76,4 +76,11 @@ app.listen(PORT, () => {
 
 // ================= LOGIN BOT =================
 
+
 client.login(TOKEN);
+const TOKEN = process.env.TOKEN?.trim();
+
+if (!TOKEN) {
+  console.error("❌ TOKEN manquant !");
+  process.exit(1);
+}
